@@ -1,0 +1,1611 @@
+---
+title: "Supervised Machine Learning Project"
+author: "Elnaz Eftekhari & Hanieh Hosseinian Pouya"
+date: "6/26/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Understanding the issue: 
+
+1.	**What is the main motivation of this project?** 
+The goal is to predict the number of applications for admission to American colleges based on 777 observations of 17 independent random variables. The purpose of the problem is to fit an optimal model to the data to better predict the variable named “Apps”. 
+
+2.	**What can the output of such a project be used for?** 
+Predicting the variable of the number of applications for admission to universities can be used in future educational planning and a better understanding of the variables affecting the number of applications of applicants, for example:
+
+    +  What variables have the greatest impact on the number of applications and examine the possibility of strengthening them in future educational planning. 
+ 
+    + What variables have the least impact on the number of applications for admission to universities.
+ 
+    +  What variables are not effective or, in other words, independent of “Apps” and examine the possibility of omitting them.
+
+3. **Who might be interested in the results of this project? **
+    + Educational regulatory organization such as the Ministry of Science,
+    + Universities and educational centers, 
+    + Research organizations in the field of education.
+
+## Understanding data: 
+
+1. **Where did the data come from and how was it collected? **
+This dataset was taken from the StatLib library which is maintained at Carnegie Mellon University. The dataset was used in the ASA Statistical Graphics Section's 1995 Data Analysis Exposition. 
+
+2. **What do each of the variables measure? **
+
+     + Private: A factor with levels No and Yes indicating private or public university
+     + Apps: Number of applications received
+     + Accept: Number of applications accepted
+     + Enroll: Number of new students enrolled
+     + Top10perc: Pct. new students from top 10% of H.S. class
+     + Top25perc: Pct. new students from top 25% of H.S. class
+     + F.Undergrad: Number of fulltime undergraduates
+     + P.Undergrad: Number of parttime undergraduates
+     + Outstate: Out-of-state tuition
+     + Room.Board: Room and board costs
+     + Books: Estimated book costs
+     + Personal: Estimated personal spending
+     + PhD:Pct. of faculty with Ph.D.'s
+     + Terminal: Pct. of faculty with terminal degree
+     + S.F.Ratio:Student/faculty ratio
+     + perc.alumni:Pct. alumni who donate
+     + Expend:Instructional expenditure per student
+     + Greatad.Rate:Graduation rate
+
+3. **Is there any ambiguity in the definitions of the data?**
+Yes, there is some ambiguity in the definition or calculation of some variables such as the perc. alumni, Grad.Rate, Student-to-Faculty Ratio, and S.F.Ratio.
+
+4. **Is there an error in measuring variables or recording data?**
+Yes, for various reasons such as:
+     + Lack of equal definitions or different interpretations of a definition by different people who are responsible for collecting data in different universities. 
+     + Error in data entry by the operator. 
+
+5. **What other variables, if any, could help solve the problem?** 
+Independent variables such as: 
+     + Number of courses available in the university
+     + The number of outstanding professors in each field based on the number of articles cited in reliable scientific journals.
+     + International University Rank 
+6. **What are the existing variables (categorical-numerical)?**
+Except for one variable named ”private”, which is a binary variable (discrete categorical variable), other variables are numerical.
+
+-----------------------------------------------------------------------------------------
+## Data preparation & Modeling
+## Required Libraries
+```{r chunk-name, message=FALSE}
+require(moments)           #Moments, skewness, kurtosis and related tests
+require(corrplot)          #Visualization of Correlation Matrix
+require(car)               #Required for Calculations Related to Regression
+require(ggplot2)           #Create Elegant Data Visualizations
+require(MASS)              #Box-Cox Transformations for Linear Models
+require(leaps)             #Regression Subset Selection
+require(glmnet)            #Lasso and Elastic-Net Regularized GLM
+require(rpart)             #Classification and Regression Trees 
+require(rpart.plot)        #Plot Decision Tree
+require(randomForest)      #Random Forests for Classification and Regression 
+require(gbm)               #Boosting Methods in Regression Problems
+require(xgboost)           #Boosting Methods in Regression Problems
+```
+## Read Data From File
+**Statistical Summary**
+```{r}
+data<-read.csv("/Volumes/USB DISK/project/college.csv",header = TRUE)
+class(data)
+dim(data)
+head(data,2)
+tail(data,2)
+```
+1. **Univariate View:**
+
+**College.Name**
+```{r}
+length(unique(data$College.Name)) 
+# No duplicate data 
+```
+
+**Private**
+```{r}
+class(data$Private) 
+data$Private<-factor(data$Private,levels = c("Yes","No")) #Convert to factor
+levels(data$Private)<-c("Private","Not Private") #Rename factor levels
+levels(data$Private)
+summary(data$Private) 
+```
+
+```{r}
+##Distribution of Private
+table(data$Private, useNA = "ifany") 
+# No missing value & number of private university is twice of number of public university.
+```
+```{r}
+barplot(table(data$Private),main = "distribution of state of university ", col ="Dark Blue" )
+```
+
+**Apps (Dependent variable)**
+
+```{r}
+summary(data$Apps)
+which(data$Apps==48094)
+#Frequency of max(data$Apps)=1, then may be it entered incorrectly.
+```
+```{r}
+#checking missing value of Apps:
+sum(is.na(data$Apps))
+# No missing value
+```
+```{r}
+#Distribution of Apps
+#1.histogram of Apps
+hist(data$Apps,xlab="Number of applications received",main=paste("Histogram of", "App"))
+
+#2.boxplot of Apps
+boxplot(data$Apps,main="box Plot Apps")
+boxplot(Apps~Private,data=data,main="box Plot of Apps according to type of university",xlab="Type of university")
+
+#3.QQ-plot of Apps
+qqnorm(data$Apps, main="qqplot of Apps",pch=20)
+qqline(data$Apps,col="red")
+
+#4Jarque-Bera Test(Skewness=0) and Anscombe-glynn Test(kurtosis=3)) for Apps
+library(moments)
+jarque.test(data$Apps)
+anscombe.test(data$Apps)
+
+#conclusion:Reject normality assumption for Apps distribution.
+```
+
+**Other continuous independent variable**
+
+```{r}
+#checking missing value:
+for (i in c(4:19)) print(c(names(data)[i],NumberofMissingValue=sum(is.na(data)[i])))
+# No missing value
+```
+```{r}
+#distribution of Other continuous independent variable
+#1.histogram of Other continuous independent variable
+par(mar=c(2,2,2,2))
+par(mfrow=c(4,4)) #4 rows and 4 columns
+for(i in c(4:19)){
+  hist(data[,i],main=paste("Histogram of", names(data)[i]),col="Dark Blue")}
+
+#2.boxplot of Other continuous independent variable
+for(i in c(4:19)){
+  boxplot(data[,i],main=paste("box Plot of",names(data)[i]))
+}
+#3.QQ-plot of Other continuous independent variable
+for(i in c(4:19)){
+  qqnorm(data[,i],main=paste("qqplot of",names(data)[i]),pch=20)
+  qqline(data[,i],col="red")}
+par(mfrow=c(1,1))
+#4Jarque-Bera Test(Skewness=0)  for Other continuous independent variable
+library(moments)
+sapply(data[,4:19],jarque.test)
+#Reject Normality assumption for all the varialbes, except variable named "Grad.Rate".
+```
+```{r}
+#Anscombe-glynn Test(kurtosis=3)) for Other continuous independent variable
+sapply(data[,4:19],anscombe.test)
+#Reject Normality assumption for all the varialbes, except variables named "Room.Board" and "Terminal" and "Grad.Rate" and "perc.alumni".
+```
+```{r}
+#conclusion:Reject Normality assumption for all the varialbes, except variable named "Grad.Rate".
+```
+
+2. **correlation Analysis**
+
+```{r}
+library(corrplot)
+cor_table<- round(cor(data[,c(3,4:19)]),3)
+cor_table
+corrplot(cor_table)
+```
+**As can be seen, there is a high correlation between the variables: Accept, Enroll and F.Undergrad.**
+
+3. **Scatter Plat**
+
+```{r}
+par(mar=c(2,2,2,2))
+par(mfrow=c(4,4))#4 rows and 4 columns
+for(i in c(4:19)){
+  plot(data[,i],data$Apps,main=paste("Scater Plot of Apps Vs.",names(data)[i]))
+}
+```
+
+4. **categurical vS Numerical Variables**
+```{r}
+par(mar=c(2,2,2,2))
+par(mfrow=c(4,4))#4 rows and 4 columns
+for(i in c(4:19)){
+  boxplot(data[,i]~Private,data=data,main=paste("box Plot of",names(data)[i],"according to Type of university "))
+}
+par(mfrow=c(1,1))
+```
+
+## Identify outleires
+**Univariate Detection:**
+**1. Apps**
+```{r}
+data_1<-data[,-1]
+tukey_1<-quantile(data_1$Apps,probs=0.75)+1.5*IQR(data_1$Apps)
+tukey_2<-quantile(data_1$Apps,probs=0.25)-1.5*IQR(data_1$Apps)
+out_Apps_sum<-sum(data_1$Apps>tukey_1|data_1$Apps < tukey_2)
+out_Apps_sum
+out_Apps_procent<-out_Apps_sum/nrow(data_1)*100
+out_Apps_procent  #9% data in Apps is outleire
+which((data_1$Apps > tukey_1|data_1$Apps < tukey_2))
+out_Apps<-data_1$Apps[data_1$Apps > tukey_1|data_1$Apps < tukey_2]
+out_Apps
+```
+**1. other variables**
+
+    +**show which data in different variable is Outlier:**
+```{r}
+for(i in c(3:18) ){
+  print(names(data_1)[i])
+  tukey_1i<-quantile(data_1[,i],probs=0.75)+1.5*IQR(data_1[,i])
+  tukey_2i<-quantile(data_1[,i],probs=0.25)-1.5*IQR(data_1[,i])
+  out_Apps_sumi<-sum(data_1[,i]>tukey_1i|data_1[,i] < tukey_2i)
+  print(out_Apps_sumi)
+  out_Apps_procenti<-out_Apps_sumi/nrow(data_1)*100
+  print(out_Apps_procenti)
+  print(which(data_1[,i]>tukey_1i|data_1[,i] < tukey_2i))
+}
+max(out_Apps) 
+data$College.Name[484] 
+# We expect this data to be high leverage.
+```
+**multivariate detection**
+
+  + **Mahalanobis D2**
+```{r}
+data_2<-data[,3:19]
+mah_d2<-mahalanobis(data_2,colMeans(data[,3:19]),cov(data_2))
+out_All<-mah_d2[mah_d2>10]
+length(out_All)/length(mah_d2)*100
+```
+**56% all of data set have the mahalanobis distance >10 **
+```{r}
+out_All<-mah_d2[mah_d2>20]
+length(out_All)/length(mah_d2)*100 
+```
+**19.94% all of data set have the mahalanobis distance >20**
+```{r}
+out_All<-mah_d2[mah_d2>30]
+length(out_All)/length(mah_d2)*100
+```
+**11.19% all of data set have the mahalanobis distance >30**
+
+## Remove data #484
+
+**data #484 besides Apps is also outlier in variables**
+
+1. **P.Undergrad,**
+
+2. **f.undergrad,**
+
+3. **accept,**
+
+4. **Enroll.**
+
+**Data #484 probably to have been entered incorrectly. so for improving result, we removed it from the data.**
+
+```{r}
+data<-data[-which(row.names(data)==484),]
+
+#Apps (dependent variable with out data #484 )
+summary(data$Apps)
+#distribution Apps with out data #484
+
+#1.histogram
+hist(data$Apps,xlab="Number of applications received",main=paste("Histogram of", "App"))
+
+#2.boxplot
+boxplot(data$Apps,main="box Plot App")
+
+#3.QQ-plot
+qqnorm(data$Apps, main="qqplot of applications received",pch=20)
+qqline(data$Apps,col="red")
+
+#4Jarque-Bera Test(Skewness=0) and Anscombe-glynn Test(kurtosis=3))
+library(moments)
+jarque.test(data$Apps)
+anscombe.test(data$Apps)
+
+#conclusion:Despite the improved results, Reject normality assumption for Apps distribution.
+```
+**Remove college name**
+
+```{r}
+data_1<-data[,-1]
+```
+## Train & Test
+
+**Divide Dataset into Train and Test**
+```{r}
+set.seed(123456)
+train_cases <- sample(1:nrow(data_1), nrow(data_1) * 0.7)
+train <- data_1[train_cases,]
+test  <- data_1[- train_cases,]
+summary(train)
+summary(test)
+dim(train)
+dim(test)
+```
+
+
+## Building Prediction Model
+## Model1:Teaditional Linear Regression
+
+```{r}
+Traditional_lm_1 <- lm(Apps ~ ., data= train)
+summary(Traditional_lm_1)
+#R-squared & Adjusted R-squared are close to 1 and 92.32% of AppS data is explained by other variables. 
+#Reject H0 for F-test(There is atleast one linear relationship )
+# T- test result: variables:Accept Assumption of H0 for variables Enroll,P.Undergrad & Books & Personal & Terminal 
+#& S.F.Ratio & perc.alumni are not in model
+# T- test result for PhD reject hardly so we keep it in the Model.
+```
+```{r}
+#Delete insignificant variables 
+
+Traditional_lm_2 <- lm(Apps ~ .-Enroll-P.Undergrad-Books-Personal-Terminal-S.F.Ratio-perc.alumni,data= train)
+summary(Traditional_lm_2)
+#R-squared & Adjusted R-squared are close to 1 so 92.33% of AppS data is explained by other variables. 
+#Reject H0 for F-test(There is atleast one linear relationship)
+#Reject H0 forT- testt:Reject Assumption of H0 for all variables.
+```
+```{r}
+#Check Assumptions of Regression for Model Traditional_lm_2
+
+#Normality of residuals
+#1.Histogram
+hist(Traditional_lm_2$residuals, probability = TRUE, main = "Histogram of residuals in Model 'Traditional_lm_2'", breaks = 25)
+lines(density(Traditional_lm_2$residuals), col = "red")
+
+#2.QQ-plot
+qqnorm(Traditional_lm_2$residuals, main = "QQ Plot of residuals of Model 'Traditional_lm_2'", pch = 20)
+qqline(Traditional_lm_2$residuals, col = "red")
+#It has serious deviations from the 45 degree line, which is not a small number. Distribution is probably not normal. 
+
+#3.Test for Skewness and Kurtosis
+jarque.test(Traditional_lm_2$residuals)
+anscombe.test(Traditional_lm_2$residuals)
+
+#Note: Residuals are not Normally Distributed, so regression assumption is not valid!
+```
+```{r}
+#Cook's distance > 1
+which(cooks.distance(Traditional_lm_2)>1)
+
+#Diagnostic Plots
+plot(Traditional_lm_2)
+#Residuals Vs Fitted shows Pattern so we probablity have collinearity problem
+#Q-Q plot shows It has serious deviations from the 45 degree line,so the observation of 251-694-71 probably cause Distribution not normal 
+#Standard error root vs Fitted(y^) shows Pattern
+#Residuals Vs leverage shows the outliers using Cook's distance.that measure the effect of existing the observations on the model.Usually sizes above 1 cause trouble and should be removed.
+```
+```{r}
+#Check multicollinearity
+car :: vif(Traditional_lm_2)
+#no multicollinearity problem.
+```
+```{r}
+#Conclusion: severe violation of regression assumption
+#Bad model!
+```
+
+**Test the Model  Traditional_lm_2**
+
+```{r}
+#Prediction
+pred_Tlm <- predict(Traditional_lm_2, test)
+head(pred_Tlm ,5)
+#Absolute error mean, median, sd, max, min-------
+abs_err_Tlm <- abs(pred_Tlm - test$Apps)
+mean(abs_err_Tlm)
+median(abs_err_Tlm)
+sd(abs_err_Tlm)
+range(abs_err_Tlm)
+
+#histogram and boxplot
+hist(abs_err_Tlm, breaks = 15)
+boxplot(abs_err_Tlm)
+
+#Actual vs. Predicted
+plot(test$Apps, pred_Tlm , xlab = "Actual", ylab = "Prediction")
+abline(a = 0, b = 1, col = "red", lwd = 2)
+```
+
+**Model2:Step-by-step we can use step by step removed outliers here and then model it**
+
+```{r}
+#1-1-------------
+#remove case #251-694-71 .
+
+train2<- train[-which(rownames(train) %in% c(251,694,71)),]
+dim(train2)
+dim(train)
+Traditional_lm_3 <- lm(Apps ~ ., data= train2)
+summary(Traditional_lm_3)
+
+Traditional_lm_4 <- lm(Apps ~ .-Top25perc-Books-Personal-Terminal-S.F.Ratio-perc.alumni,data= train2)
+summary(Traditional_lm_4)
+
+#Check Assumptions of Regression for Model Traditional_lm_4 
+
+#Diagnostic Plots
+plot(Traditional_lm_4)
+
+#Test for Skewness and Kurtosis
+jarque.test(Traditional_lm_4$residuals)
+anscombe.test(Traditional_lm_4$residuals)
+
+#Note: Residuals are not Normally Distributed, so regression assumption is not valid!
+# outliers of 606,175 probably cause Distribution not normal  
+```
+```{r}
+#1-2---------------------
+#remove case #175,606 .
+
+train2<- train[-which(rownames(train) %in% c(251,694,71,175,606)),]
+dim(train2)
+Traditional_lm_3 <- lm(Apps ~ ., data= train2)
+summary(Traditional_lm_3)
+
+Traditional_lm_4 <- lm(Apps ~ .-Top25perc-Books-Personal-Terminal-S.F.Ratio-perc.alumni,data= train2)
+summary(Traditional_lm_4)
+
+#Check Assumptions of Regression for Model Traditional_lm_4 
+
+#Diagnostic Plots
+plot(Traditional_lm_4)
+
+#Test for Skewness and Kurtosis
+jarque.test(Traditional_lm_4$residuals)
+anscombe.test(Traditional_lm_4$residuals)
+
+#Note: Residuals are not Normally Distributed, so regression assumption is not valid!
+# outliers of 562 probably cause Distribution not normal
+```
+```{r}
+#1-3-----------
+#remove case #562 .
+
+train2<- train[-which(rownames(train) %in% c(251,694,71,175,606,562)),]
+dim(train2)
+Traditional_lm_3 <- lm(Apps ~ ., data= train2)
+summary(Traditional_lm_3)
+
+Traditional_lm_4 <- lm(Apps ~ .-Top25perc-Books-Personal-PhD-Terminal-S.F.Ratio-perc.alumni,data= train2)
+summary(Traditional_lm_4)
+
+#Check Assumptions of Regression for Model Traditional_lm_4 
+
+#Diagnostic Plots
+plot(Traditional_lm_4)
+
+#Test for Skewness and Kurtosis
+jarque.test(Traditional_lm_4$residuals)
+anscombe.test(Traditional_lm_4$residuals)
+
+
+#Note: Residuals are not Normally Distributed, so regression assumption is not valid!
+# outliers of 446 probably cause Distribution not normal
+
+
+#Residuales Distribution is far from the normal distribution.---
+```
+```{r}
+#1-4-----------
+#remove case #446 .
+
+train2<- train[-which(rownames(train) %in% c(251,694,71,175,606,562,446)),]
+dim(train2)
+Traditional_lm_3 <- lm(Apps ~ ., data= train2)
+summary(Traditional_lm_3)
+
+Traditional_lm_4 <- lm(Apps ~ .-Enroll-Top25perc-F.Undergrad-Personal-PhD-Terminal-S.F.Ratio-perc.alumni,data= train2)
+summary(Traditional_lm_4)
+
+#Check Assumptions of Regression for Model Traditional_lm_4 
+
+#Diagnostic Plots
+plot(Traditional_lm_4)
+
+#Test for Skewness and Kurtosis
+jarque.test(Traditional_lm_4$residuals)
+anscombe.test(Traditional_lm_4$residuals)
+
+#Note: Residuals are not Normally Distributed, so regression assumption is not valid!
+#Residuales Distribution is far from the normal distribution.
+```
+
+## Train dataset without outliers
+
+```{r}
+trimmed_train <- train[- which(train$Apps > tukey_1), ]
+dim(trimmed_train)
+dim(train)
+summary(trimmed_train$Apps)
+(dim(train)-dim(trimmed_train))/dim(train)*100
+#9% data are outliers
+```
+
+## Model3: Building Model with trimmed_train (Traditional_lm_trimmed_train_2)
+
+```{r}
+Traditional_lm_trimmed_train <- lm(Apps ~ ., data= trimmed_train)
+summary(Traditional_lm_trimmed_train)
+
+#Delete insignificant variables 
+
+Traditional_lm_trimmed_train_2 <- lm(Apps ~ .-Top25perc-Personal-PhD-Terminal-perc.alumni,data=trimmed_train)
+summary(Traditional_lm_trimmed_train_2)
+
+
+#Check Assumptions of Regression for Model Traditional_lm_trimmed_train_2
+
+#Normality of residuals
+#1.Histogram
+hist(Traditional_lm_trimmed_train_2$residuals, probability = TRUE, main = "Histogram of residuals in Model 'Traditional_lm_trimmed_train_2'", breaks = 25)
+lines(density(Traditional_lm_trimmed_train_2$residuals), col = "red")
+
+#QQ-plot
+qqnorm(Traditional_lm_trimmed_train_2$residuals, main = "QQ Plot of residuals of Model 'Traditional_lm_trimmed_train_2'", pch = 20)
+qqline(Traditional_lm_trimmed_train_2$residuals, col = "red")
+
+#Test for Skewness and Kurtosis
+jarque.test(Traditional_lm_trimmed_train_2$residuals)
+anscombe.test(Traditional_lm_trimmed_train_2$residuals)
+
+#Note: Residuals are not Normally Distributed, so regression assumption is not valid!
+```
+```{r}
+#Cook's distance > 1
+which(cooks.distance(Traditional_lm_trimmed_train_2)>1)
+
+#Diagnostic Plots
+plot(Traditional_lm_trimmed_train_2)
+
+#Check multicollinearity
+car :: vif(Traditional_lm_trimmed_train_2)# multicollinearity problem.
+
+#Conclusion: severe violation of regression assumption
+#Bad model!
+```
+
+**Test the Model  Traditional_lm_trimmed_train_2**
+
+```{r}
+#Prediction
+pred_Tlm_trimmed <- predict(Traditional_lm_trimmed_train_2, test)
+head(pred_Tlm_trimmed,5)
+#Absolute error mean, median, sd, max, min-------
+abs_err_Tlm_trimmed <- abs(pred_Tlm_trimmed - test$Apps)
+mean(abs_err_Tlm_trimmed)
+median(abs_err_Tlm_trimmed)
+sd(abs_err_Tlm_trimmed)
+range(abs_err_Tlm_trimmed)
+
+#histogram and boxplot
+hist(abs_err_Tlm_trimmed, breaks = 15)
+boxplot(abs_err_Tlm_trimmed)
+
+#Actual vs. Predicted
+plot(test$Apps, pred_Tlm_trimmed , xlab = "Actual", ylab = "Prediction")
+abline(a = 0, b = 1, col = "red", lwd = 2)
+```
+
+## Box-Cox Transformation
+
+```{r}
+library("MASS")
+box_results <- boxcox(Apps ~ ., data = train, lambda = seq(-5, 5, 0.1))               
+box_results <- data.frame(box_results$x, box_results$y) 
+# Create a data frame with the results
+lambda_1 <- box_results[which(box_results$box_results.y == max(box_results$box_results.y)), 1]
+lambda_1
+#lambda is different from 0 .So y=(y^lambda-1)/lambda
+```
+```{r}
+#Transformation
+train$transform_Apps <-((train$Apps ^ lambda_1) - 1) / lambda_1
+```
+
+## Model4: Model with transform_Apps
+
+```{r}
+lm_transform_Apps_1 <- lm(transform_Apps ~ . - Apps, data = train)
+summary(lm_transform_Apps_1)
+
+#Delete insignificant variables 
+lm_transform_Apps_2 <- lm(transform_Apps ~ . - Apps-Enroll-Top25perc-F.Undergrad-Outstate-Personal-PhD-Terminal  , data = train)
+summary(lm_transform_Apps_2)
+
+#Delete insignificant variables 
+
+lm_transform_Apps_3 <- lm(transform_Apps ~ . - Apps-Enroll-Top25perc-F.Undergrad-Outstate-Personal-PhD-Terminal-perc.alumni  , data = train)
+summary(lm_transform_Apps_3)
+
+#Check Assumptions of Regression----
+#Normality of residuals
+
+#1.Histogram
+hist(lm_transform_Apps_3$residuals, probability = TRUE, main = "Histogram of residuals in Model 'lm_transform_Apps_3'", breaks = 25)
+lines(density(lm_transform_Apps_3$residuals), col = "red")
+
+#2.QQ-plot
+qqnorm(lm_transform_Apps_3$residuals, main = "QQ Plot of residuals of Model 'lm_transform_Apps_3'")
+qqline(lm_transform_Apps_3$residuals, col = "red")
+#improve Model
+
+#3.Test for Skewness and Kurtosis
+jarque.test(lm_transform_Apps_3$residuals)
+anscombe.test(lm_transform_Apps_3$residuals)
+
+plot(lm_transform_Apps_3)
+car :: vif(lm_transform_Apps_3)
+#no multicollinearity problem.
+
+#Note: Residuals are not Normally Distributed, so regression assumption is not valid!
+```
+
+**Test the Model Prediction:lm_transform_Apps_3**
+
+```{r}
+pred_lm_transform <- predict(lm_transform_Apps_3, test)
+pred_lm_transform<-((lambda_1*pred_lm_transform)+1)^(1/lambda_1)
+head(pred_lm_transform,5)
+#Absolute error mean, median, sd, max, min-------
+abs_err_lm_transform <- abs(pred_lm_transform - test$Apps)
+mean(abs_err_lm_transform)
+median(abs_err_lm_transform)
+sd(abs_err_lm_transform)
+range(abs_err_lm_transform)
+
+#histogram and boxplot
+hist(abs_err_lm_transform, breaks = 15)
+boxplot(abs_err_lm_transform)
+
+#Actual vs. Predicted
+plot(test$Apps, pred_lm_transform, xlab = "Actual", ylab = "Prediction")
+abline(a = 0, b = 1, col = "red", lwd = 2)
+```
+
+**It seems that the outlier data is a hiegh effect on the model.so we removed outliers in "Test" data set**
+
+```{r}
+trimmed_test<-test[-which(test$Apps > tukey_1),]
+dim(test)
+dim(trimmed_test)
+#Model Prediction:lm_transform_Apps_3 with trimmed_test data--------
+pred_lm_transform_trimmed_test <- predict(lm_transform_Apps_3, trimmed_test)
+pred_lm_transform_trimmed_test<-((lambda_1*pred_lm_transform_trimmed_test)+1)^(1/lambda_1)
+head(pred_lm_transform_trimmed_test,5)
+
+#Absolute error mean, median, sd, max, min with trimmed_test data-------
+abs_err_lm_transform_trimmed_test <- abs(pred_lm_transform_trimmed_test - trimmed_test$Apps)
+mean(abs_err_lm_transform_trimmed_test)
+median(abs_err_lm_transform_trimmed_test)
+sd(abs_err_lm_transform_trimmed_test)
+range(abs_err_lm_transform_trimmed_test)
+
+#histogram and boxplot
+hist(abs_err_lm_transform_trimmed_test, breaks = 15)
+boxplot(abs_err_lm_transform_trimmed_test)
+
+#Actual vs. Predicted
+plot(trimmed_test$Apps,pred_lm_transform_trimmed_test, xlab = "Actual", ylab = "Prediction")
+abline(a = 0, b = 1, col = "red", lwd = 2)
+```
+
+## Model5: Using the Best Subset Selection Methods (according to adjr2)
+
+```{r}
+library("leaps")
+dim(train)
+#Best Subset Selection---------------------------
+bestsub_1 <- regsubsets(transform_Apps~ . - Apps, nvmax = 17, data = train, method = "exhaustive")
+summary(bestsub_1)
+#Model Selection
+#1.Adjusted R-squared
+summary(bestsub_1)$rsq
+summary(bestsub_1)$adjr2
+
+#Plot Adjusted R-squared
+plot(summary(bestsub_1)$adjr2,
+     type = "b",
+     xlab = "# of Variables", 
+     ylab = "AdjR2", 
+     xaxt = 'n',
+     xlim = c(1, 17)); grid()
+axis(1, at = 1:17, labels = 1:17)
+
+points(which.max(summary(bestsub_1)$adjr2), 
+       summary(bestsub_1)$adjr2[which.max(summary(bestsub_1)$adjr2)],
+       col = "red", cex = 2, pch = 20)
+#Consider Adjusted R-squared, best Model is Model with 13 variables.
+
+#Coefficients of the best model---
+
+coef(bestsub_1, 13) #Model w/ 13 variables
+
+bestsub_adjr2 <- lm(transform_Apps ~Private+Accept+ Enroll+Top10perc+ P.Undergrad+Room.Board+
+                  Books+Personal+PhD+S.F.Ratio+perc.alumni+Expend+Grad.Rate, data = train)
+summary(bestsub_adjr2)
+```
+
+**Test the Model according to adjr2**
+
+```{r}
+#Prediction
+pred_bestsub_adj2  <- predict(bestsub_adjr2, test)
+head(pred_bestsub_adj2,5) 
+pred_bestsub_adj2  <-((lambda_1*pred_bestsub_adj2)+1)^(1/lambda_1)
+head(pred_bestsub_adj2,5)
+#Absolute error mean, median, sd, max, min-------
+abs_err_bestsub_adj2 <- abs(pred_bestsub_adj2 - test$Apps)
+mean(abs_err_bestsub_adj2)
+median(abs_err_bestsub_adj2)
+sd(abs_err_bestsub_adj2)
+range(abs_err_bestsub_adj2)
+
+#histogram and boxplot
+hist(abs_err_bestsub_adj2, breaks = 15)
+boxplot(abs_err_bestsub_adj2)
+
+#Actual vs. Predicted
+plot(test$Apps, pred_bestsub_adj2, xlab = "Actual", ylab = "Prediction")
+abline(a = 0, b = 1, col = "red", lwd = 2)
+```
+
+## Model6: Using the Best Subset Selection Methods (according to CP)
+
+```{r}
+#Plot Cp
+plot(summary(bestsub_1)$cp,
+     type = "b",
+     xlab = "# of Variables", 
+     ylab = "Cp", 
+     xaxt = 'n',
+     xlim = c(1, 17)); grid()
+axis(1, at = 1:17, labels = 1:17)
+
+points(which.min(summary(bestsub_1)$cp), 
+       summary(bestsub_1)$cp[which.min(summary(bestsub_1)$cp)],
+       col = "red", cex = 2, pch = 20)
+#Consider CP, best Model is Model with 11 variables.
+
+#Coefficients of the best model---
+
+coef(bestsub_1, 11) #Model w/ 11 variables
+
+bestsub_CP <- lm(transform_Apps ~Private+Accept+ Enroll+Top10perc+ P.Undergrad+Room.Board+
+                      Books+S.F.Ratio+perc.alumni+Expend+Grad.Rate, data = train)
+summary(bestsub_CP)
+```
+
+**Test the Model according to CP **
+
+```{r}
+#Prediction
+pred_bestsub_CP  <- predict(bestsub_CP, test)
+head(pred_bestsub_CP,5)
+pred_bestsub_CP  <-((lambda_1*pred_bestsub_CP)+1)^(1/lambda_1)
+head(pred_bestsub_CP,5)
+#Absolute error mean, median, sd, max, min-------
+abs_err_bestsub_CP <- abs(pred_bestsub_CP - test$Apps)
+mean(abs_err_bestsub_CP)
+median(abs_err_bestsub_CP)
+sd(abs_err_bestsub_CP)
+range(abs_err_bestsub_CP)
+
+#histogram and boxplot
+hist(abs_err_bestsub_CP, breaks = 15)
+boxplot(abs_err_bestsub_CP)
+
+#Actual vs. Predicted
+plot(test$Apps, pred_bestsub_CP, xlab = "Actual", ylab = "Prediction")
+abline(a = 0, b = 1, col = "red", lwd = 2)
+```
+
+## Model7: Using the Best Subset Selection Methods (according to BIC)
+
+```{r}
+#Plot BIC
+plot(summary(bestsub_1)$bic,
+     type = "b",
+     xlab = "# of Variables", 
+     ylab = "BIC", 
+     xaxt = 'n',
+     xlim = c(1, 17)); grid()
+axis(1, at = 1:17, labels = 1:17)
+
+points(which.min(summary(bestsub_1)$bic), 
+       summary(bestsub_1)$bic[which.min(summary(bestsub_1)$bic)],
+       col = "red", cex = 2, pch = 20)
+
+#Consider BIC, best Model is Model with 9 variables.
+coef(bestsub_1, 9) #Model w/ 9 variables
+
+bestsub_BIC <- lm(transform_Apps ~Private+Accept+Top10perc+ P.Undergrad+Room.Board+
+                   Books+S.F.Ratio+Expend+Grad.Rate, data = train)
+summary(bestsub_BIC)
+```
+
+**Test the Model according to BIC **
+
+```{r}
+#Prediction
+pred_bestsub_BIC  <- predict(bestsub_BIC, test)
+head(pred_bestsub_BIC,5) 
+pred_bestsub_BIC  <-((lambda_1*pred_bestsub_BIC)+1)^(1/lambda_1)
+head(pred_bestsub_BIC,5)
+#Absolute error mean, median, sd, max, min-------
+abs_err_bestsub_BIC <- abs(pred_bestsub_BIC - test$Apps)
+mean(abs_err_bestsub_BIC)
+median(abs_err_bestsub_BIC)
+sd(abs_err_bestsub_BIC)
+range(abs_err_bestsub_BIC)
+
+#histogram and boxplot
+hist(abs_err_bestsub_BIC, breaks = 15)
+boxplot(abs_err_bestsub_BIC)
+
+#Actual vs. Predicted
+plot(test$Apps, pred_bestsub_BIC, xlab = "Actual", ylab = "Prediction")
+abline(a = 0, b = 1, col = "red", lwd = 2)
+```
+
+## Model8: Using the Forward and Backward Stepwise Selection 
+
+```{r}
+fwd_1 <- regsubsets(transform_Apps ~ . - Apps, nvmax = 17, data = train, method = "forward")
+
+summary(fwd_1)
+
+which.max(summary(fwd_1)$adjr2)
+which.min(summary(fwd_1)$cp)
+which.min(summary(fwd_1)$bic)
+
+# Backward Stepwise Selection----------
+bwd_1 <- regsubsets(transform_Apps ~ . - Apps, nvmax = 17, data = train, method = "backward")
+summary(bwd_1)
+
+which.max(summary(bwd_1)$adjr2)
+which.min(summary(bwd_1)$cp)
+which.min(summary(bwd_1)$bic)
+
+which.max(summary(bestsub_1)$adjr2)
+which.min(summary(bestsub_1)$cp)
+which.min(summary(bestsub_1)$bic)
+
+coef(bestsub_1, 9)
+coef(fwd_1, 9)
+coef(bwd_1, 9)
+
+#The result for Best Subset Selection ,forward and backward is the same!----
+```
+
+## Model9:Using the Best Subset Selection Methods Using K-fold Cross-Validation Approach
+
+```{r}
+k <- 10
+set.seed(123)
+folds <- sample(1:k, nrow(train), rep = TRUE)
+cv_errors <- matrix(NA, k, 17, dimnames = list(NULL , paste(1:17)))
+#Prediction function
+predict_regsubsets <- function(object, newdata, id) {
+  reg_formula <- as.formula(object$call[[2]])
+  mat    <- model.matrix(reg_formula, newdata)
+  coef_i <- coef(object, id = id)
+  mat[, names(coef_i)] %*% coef_i
+}
+
+#K-fold Cross Validation
+set.seed(1234)
+for(i in 1:k){
+  best_fit <- regsubsets( transform_Apps~ . - Apps, data = train[folds != i,], nvmax = 17, method = "exhaustive")
+  for(j in 1:17){
+    pred <- predict_regsubsets(best_fit, newdata = train[folds == i,], id = j)
+    cv_errors[i, j] <- mean((train$transform_Apps[folds == i] - pred) ^ 2)
+  }
+}
+
+head(cv_errors,5)
+mean_cv_erros <- apply(cv_errors, 2, mean)
+mean_cv_erros 
+plot(mean_cv_erros, type = "b")
+which.min(mean_cv_erros)
+#Model with 9 variables
+```
+```{r}
+#Coefficients of the best model
+coef(bestsub_1, 9) 
+
+bestsub_cv_1 <- lm(transform_Apps ~Private+Accept+Top10perc+ P.Undergrad+Room.Board+
+                    Books+S.F.Ratio+Expend+Grad.Rate, data = train)
+summary(bestsub_cv_1)
+#Normality of residuals
+#Test for Skewness and Kurtosis
+jarque.test(bestsub_cv_1$residuals)
+anscombe.test(bestsub_cv_1$residuals)
+# Reject Assumption of Normality of residuals
+plot(bestsub_cv_1)
+car :: vif(bestsub_cv_1)
+#no multicollinearity problem.
+```
+
+**Test the Model bestsub_cv**
+
+```{r}
+#Prediction
+pred_bestsub_cv <- predict(bestsub_cv_1, test)
+pred_bestsub_cv <- ((lambda_1*pred_bestsub_cv)+1)^(1/lambda_1)
+
+#Absolute error mean, median, sd, max, min-------
+abs_err_bestsub_cv <- abs(pred_bestsub_cv - test$Apps)
+mean(abs_err_bestsub_cv)
+median(abs_err_bestsub_cv)
+sd(abs_err_bestsub_cv)
+range(abs_err_bestsub_cv)
+
+#histogram and boxplot
+hist(abs_err_bestsub_cv, breaks = 15)
+boxplot(abs_err_bestsub_cv)
+
+#Actual vs. Predicted
+plot(test$Apps, pred_bestsub_cv, xlab = "Actual", ylab = "Prediction")
+abline(a = 0, b = 1, col = "red", lwd = 2)
+```
+
+## Model10: Best Sub Selection Using Trimmed Train and CV
+
+```{r}
+#Add transform_Apps
+View(trimmed_train)
+trimmed_train$transform_Apps <- ((trimmed_train$Apps ^ lambda_1) - 1) / lambda_1
+
+trimmed_bestsub_1 <- regsubsets(transform_Apps ~ . - Apps, nvmax = 18, data = trimmed_train, method = "exhaustive")
+summary(trimmed_bestsub_1)
+
+which.max(summary(trimmed_bestsub_1)$adjr2)
+which.min(summary(trimmed_bestsub_1)$cp)
+which.min(summary(trimmed_bestsub_1)$bic)
+
+#Coefficients of the best model
+coef(trimmed_bestsub_1, 12) #Model w/ 12 variables
+
+
+trimmed_bestsub_2 <- lm(transform_Apps ~Private+Accept+ Enroll+Top10perc+Top25perc+ P.Undergrad+Room.Board+
+                                           Books+PhD+S.F.Ratio+Expend+Grad.Rate, data = trimmed_train)
+ 
+summary(trimmed_bestsub_2)
+```
+
+**Test the Model Prediction trimmed_bestsub_2**
+
+```{r}
+pred_trimmed_bestsub  <- predict(trimmed_bestsub_2, test)
+pred_trimmed_bestsub  <- ((lambda_1*pred_trimmed_bestsub)+1)^(1/lambda_1)
+head(pred_trimmed_bestsub,5)
+#Absolute error mean, median, sd, max, min-------
+abs_err_trimmed_bestsub <- abs(pred_trimmed_bestsub - test$Apps)
+mean(abs_err_trimmed_bestsub)
+median(abs_err_trimmed_bestsub)
+sd(abs_err_trimmed_bestsub)
+range(abs_err_trimmed_bestsub)
+IQR(abs_err_Tlm_trimmed)
+#histogram and boxplot
+hist(abs_err_trimmed_bestsub, breaks = 15)
+boxplot(abs_err_trimmed_bestsub)
+
+#Actual vs. Predicted
+plot(test$Apps, pred_trimmed_bestsub, xlab = "Actual", ylab = "Prediction")
+abline(a = 0, b = 1, col = "red", lwd = 2)
+```
+
+## Model11: Ridge Regression
+
+```{r}
+#Regularization
+x <- model.matrix(transform_Apps ~ + . - Apps, data = train)[, -1] #remove intercept
+y <- train$transform_Apps
+
+lambda_ridge_grid <- 10 ^ seq(10, -2, length = 100)
+head(lambda_ridge_grid,5)
+
+#Apply Ridge Regression
+library("glmnet")
+ridgereg_1 <- glmnet(x, y, alpha = 0, lambda = lambda_ridge_grid)
+dim(coef(ridgereg_1))
+
+
+#Cross validation to choose the best model
+set.seed(1234)
+ridge_cv    <- cv.glmnet(x, y, alpha = 0, nfolds = 10)
+#The mean cross-validated error
+ridge_cv$cvm
+#Estimate of standard error of cvm.
+ridge_cv$cvsd
+
+#value of lambda that gives minimum cvm
+ridge_cv$lambda.min
+
+#Coefficients of regression w/ best_lambda
+ridgereg <- glmnet(x, y, alpha = 0, lambda = ridge_cv$lambda.min)
+coef(ridgereg)
+```
+
+**Test the Model Ridge Regression**
+
+```{r}
+#Create model matrix for test
+test$transform_Apps <-((test$Apps ^ lambda_1) - 1) / lambda_1
+x_test <- model.matrix(transform_Apps ~ + . - Apps, data = test)[, -1]#remove intercept
+pred_ridgereg <- predict(ridgereg, s = ridge_cv$lambda.min, newx = x_test)
+head(pred_ridgereg,5)
+pred_ridgereg <- ((lambda_1*pred_ridgereg)+1)^(1/lambda_1)
+head(pred_ridgereg,5)
+#Absolute error mean, median, sd, max, min
+abs_err_ridgereg <- abs(pred_ridgereg - test$Apps)
+mean(abs_err_ridgereg)
+median(abs_err_ridgereg)
+sd(abs_err_ridgereg)
+IQR(abs_err_ridgereg)
+range(abs_err_ridgereg)
+
+#Actual vs. Predicted
+plot(test$Apps, pred_ridgereg, xlab = "Actual", ylab = "Prediction")
+abline(a = 0, b = 1, col = "red", lwd = 2)
+```
+
+## Model12: Lasso Regression
+
+```{r}
+library("glmnet")
+lassoreg_1 <- glmnet(x, y, alpha = 1, lambda = lambda_ridge_grid)
+dim(coef(lassoreg_1))
+
+#Plot Reg. Coefficients vs. Log Lambda
+plot(lassoreg_1, xvar = "lambda")
+
+#Cross validation to choose the best model
+set.seed(1234)
+lasso_cv    <- cv.glmnet(x, y, alpha = 1, nfolds = 10)
+#The mean cross-validated error
+lasso_cv$cvm
+#Estimate of standard error of cvm.
+lasso_cv$cvsd
+
+#value of lambda that gives minimum cvm
+lasso_cv$lambda.min
+
+#Coefficients of regression w/ best_lambda
+lassoreg_2 <- glmnet(x, y, alpha = 1, lambda = lasso_cv$lambda.min)
+coef(lassoreg_2)
+```
+
+**Test the Model Prediction Lasso Regression**
+
+```{r}
+pred_lassoreg <- predict(lassoreg_2, s = lasso_cv$lambda.min, newx = x_test)
+head(pred_lassoreg,5)
+pred_lassoreg <- ((lambda_1*pred_lassoreg)+1)^(1/lambda_1)
+head(pred_lassoreg,5)
+#Absolute error mean, median, sd, max, min-------
+abs_err_lassoreg <- abs(pred_lassoreg - test$Apps)
+mean(abs_err_lassoreg)
+median(abs_err_lassoreg)
+sd(abs_err_lassoreg)
+IQR(abs_err_lassoreg)
+range(abs_err_lassoreg)
+```
+
+## Model 13: Decision Trees
+
+```{r}
+#Decision Tree Model Using All Variables
+library("rpart") 
+tree_1 <- rpart(formula =transform_Apps~ . - Apps, data = train, cp = 0.0001, maxdepth = 17)
+
+#Plot the tree
+library("rpart.plot")
+prp(tree_1)
+
+#Prune the tree
+plotcp(tree_1)
+tree_1$cptable[which.min(tree_1$cptable[,"xerror"])]
+
+#Prune the tree
+tree_2 <- prune.rpart(tree_1, 
+                      cp = tree_1$cptable[which.min(tree_1$cptable[,"xerror"])])
+
+#Plot the tree
+prp(tree_2)
+```
+
+**Test the Model Decision Tree**
+
+```{r}
+pred_tree  <- predict(tree_2, test)
+pred_tree  <- ((lambda_1*pred_tree)+1)^(1/lambda_1)
+head(pred_tree,5)
+
+#Absolute error mean, median, sd, max, min-------
+abs_err_tree <- abs(pred_tree - test$Apps)
+mean(abs_err_tree)
+median(abs_err_tree)
+sd(abs_err_tree)
+IQR(abs_err_tree)
+range(abs_err_tree)
+
+#Actual vs. Predicted
+plot(test$Apps, pred_tree, xlab = "Actual", ylab = "Prediction")
+abline(a = 0, b = 1, col = "red", lwd = 2)
+```
+
+## Model 14: Bagging
+
+```{r}
+library("randomForest")
+set.seed(1234)
+bagging_1 <- randomForest(transform_Apps ~ . - Apps, mtry = ncol(train) - 2, ntree = 500, data = train)
+bagging_1
+```
+
+**Test the Model Bagging **
+
+```{r}
+#Prediction: M8 Bagging
+pred_bagging  <- predict(bagging_1, test)
+pred_bagging  <- ((lambda_1*pred_bagging)+1)^(1/lambda_1)
+head(pred_bagging,5)
+
+#Absolute error mean, median, sd, max, min-------
+abs_err_bagging <- abs(pred_bagging - test$Apps)
+mean(abs_err_bagging)
+median(abs_err_bagging)
+sd(abs_err_bagging)
+IQR(abs_err_bagging)
+range(abs_err_bagging)
+
+#Actual vs. Predicted
+plot(test$Apps, pred_bagging, xlab = "Actual", ylab = "Prediction")
+abline(a = 0, b = 1, col = "red", lwd = 2)
+```
+
+## Model15: Random Forrest (using K-fold Cross-Validation)
+
+```{r}
+set.seed(1234)
+rf_1 <- randomForest(transform_Apps ~ . - Apps, data = train, ntree = 500, importance = TRUE)
+rf_1
+
+importance(rf_1)
+varImpPlot(rf_1)
+
+#K-fold Cross-Validation for feature selection
+dim(train)
+set.seed(12345)
+rf_cv <- rfcv(train[, - c(2, 19)], 
+              train$transform_Apps, 
+              cv.fold = 10,
+              step = 0.75,
+              mtry = function(p) max(1, floor(sqrt(p))), 
+              recursive = FALSE)
+class(rf_cv)
+str(rf_cv)
+#Vector of number of variables used at each step
+rf_cv$n.var
+#Corresponding vector of MSEs at each step
+rf_cv$error.cv
+which.min(rf_cv$error.cv)
+
+#Remove 10 variables based on Importance of Variables
+sort(importance(rf_1)[,1])
+
+#Regression formula
+reg_formula <- as.formula(transform_Apps ~Room.Board+Top10perc+Top25perc+Outstate+F.Undergrad+Enroll+Accept) 
+reg_formula
+#mtry	
+floor(sqrt(7))   
+
+set.seed(1234)
+rf_2 <- randomForest(reg_formula, data = train, mtry = 2, ntree = 500)
+rf_2
+```
+
+**Test the Model Random Forrest (using K-fold Cross-Validation)**
+
+```{r}
+#Prediction: Random Forrest
+pred_rf  <- predict(rf_2, test)
+pred_rf  <- ((lambda_1*pred_rf)+1)^(1/lambda_1)
+head(pred_rf,5)
+
+#Absolute error mean, median, sd, max, min-------
+abs_err_rf <- abs(pred_rf - test$Apps)
+mean(abs_err_rf)
+median(abs_err_rf)
+sd(abs_err_rf)
+IQR(abs_err_rf)
+range(abs_err_rf)
+
+#Actual vs. Predicted
+plot(test$Apps, pred_rf, xlab = "Actual", ylab = "Prediction")
+abline(a = 0, b = 1, col = "red", lwd = 2)
+```
+
+## Model 16: Bagging with Trimmed Train
+
+```{r}
+set.seed(1234)
+trimmedbagging_1 <- randomForest(transform_Apps ~ . - Apps, mtry = ncol(trimmed_train) - 2, ntree = 500, data = trimmed_train)
+trimmedbagging_1
+```
+
+**Test the Model Bagging with Trimmed Train**
+
+```{r}
+#Prediction Bagging
+pred_trimmedbagging  <- predict(trimmedbagging_1, test)
+pred_trimmedbagging  <- ((lambda_1*pred_trimmedbagging)+1)^(1/lambda_1)
+head(pred_trimmedbagging,5)
+
+#Absolute error mean, median, sd, max, min-------
+abs_err_trimmedbagging <- abs(pred_trimmedbagging - test$Apps)
+mean(abs_err_trimmedbagging)
+median(abs_err_trimmedbagging)
+sd(abs_err_trimmedbagging)
+IQR(abs_err_trimmedbagging)
+range(abs_err_trimmedbagging)
+
+#Actual vs. Predicted
+plot(test$Apps, pred_trimmedbagging, xlab = "Actual", ylab = "Prediction")
+abline(a = 0, b = 1, col = "red", lwd = 2)
+```
+
+## Model 17: GB Regression
+
+```{r}
+library("gbm")
+library("xgboost")
+library("ggplot2")
+set.seed(123)
+#train GBM model
+gbm_1 <- gbm(formula =transform_Apps ~ . - Apps,
+             distribution = "gaussian",
+             data = train,
+             n.trees = 10000, #the total number of trees to fit
+             interaction.depth = 1, #1: stump, the maximum depth of each tree 
+             shrinkage = 0.001, #learning rate
+             cv.folds = 5, #Number of cross-validation folds to perform
+             n.cores = NULL, #will use all cores by default
+             verbose = FALSE)  
+
+#get MSE and compute RMSE
+min(gbm_1$cv.error)         #MSE
+sqrt(min(gbm_1$cv.error))   #RMSE
+
+#plot loss function as a result of n trees added to the ensemble
+gbm.perf(gbm_1, method = "cv")
+#returns the estimated optimal number of iterations
+
+#Use different parameters
+set.seed(123)
+#Tuning
+#Create hyper-parameter grid
+par_grid <- expand.grid(shrinkage = c(0.001, 0.005, 0.01),
+                        interaction_depth = c(1, 3, 5), 
+                        n_minobsinnode = c(5, 10, 15),  
+                        bag_fraction = c(0.5, 0.7, 0.9)  
+)
+nrow(par_grid)
+
+#Grid search (train/validation approach)
+for(i in 1:nrow(par_grid)) {
+  set.seed(123)
+  #train model
+  gbm_tune <- gbm(formula = transform_Apps ~ . - Apps,
+                  distribution = "gaussian",
+                  data = train,
+                  n.trees = 5000,
+                  interaction.depth = par_grid$interaction_depth[i],
+                  shrinkage = par_grid$shrinkage[i],
+                  n.minobsinnode = par_grid$n_minobsinnode[i],
+                  bag.fraction = par_grid$bag_fraction[i],
+                  train.fraction = 0.8,
+                  cv.folds = 0,
+                  n.cores = NULL, #will use all cores by default
+                  verbose = FALSE)  
+  #add min training error and trees to grid
+  par_grid$optimal_trees[i] <- which.min(gbm_tune$valid.error)
+  par_grid$min_RMSE[i]      <- sqrt(min(gbm_tune$valid.error))
+}
+knitr::kable(head(par_grid,5))
+
+#Modify hyper-parameter grid
+par_grid <- expand.grid(shrinkage = c(0.005, 0.007, 0.01),
+                        interaction_depth = c(3, 4, 5),
+                        n_minobsinnode = c(4, 5, 6),
+                        bag_fraction = c(0.5, 0.5, 0.7)  #stochastic gradient :bag.fraction < 1
+)
+
+#Grid search 
+for(i in 1:nrow(par_grid)) {
+  set.seed(123)
+  #train model
+  gbm_tune <- gbm(formula = transform_Apps ~ . - Apps,
+                  distribution = "gaussian",
+                  data = train,
+                  n.trees = 5000,
+                  interaction.depth = par_grid$interaction_depth[i],
+                  shrinkage = par_grid$shrinkage[i],
+                  n.minobsinnode = par_grid$n_minobsinnode[i],
+                  bag.fraction = par_grid$bag_fraction[i],
+                  train.fraction = 0.8,
+                  cv.folds = 0,
+                  n.cores = NULL, #will use all cores by default
+                  verbose = FALSE)  
+  #add min training error and trees to grid
+  par_grid$optimal_trees[i] <- which.min(gbm_tune$valid.error)
+  par_grid$min_RMSE[i]    <- sqrt(min(gbm_tune$valid.error))
+}
+
+knitr::kable(head(par_grid,5))
+
+#Final Model
+gbm_3 <- gbm(formula =transform_Apps ~ . - Apps,
+             distribution = "gaussian",
+             data = train,
+             n.trees = 2500,
+             interaction.depth = 5,
+             shrinkage =0.010,
+             n.minobsinnode = 5,
+             bag.fraction = 0.5,
+             train.fraction = 0.8,
+             cv.folds = 0,
+             n.cores = NULL, #will use all cores by default
+)  
+
+summary(gbm_3)
+```
+
+**Test the Model GB Regression**
+
+```{r}
+#Model: gbm_3
+#Prediction
+pred_gbm <- predict(gbm_3, n.trees = 2500, newdata = test)
+head(pred_gbm,5)
+pred_gbm <- ((lambda_1*pred_gbm)+1)^(1/lambda_1)
+head(pred_gbm,5)
+#Absolute error mean, median, sd, max, min-------
+abs_err_gbm <- abs(pred_gbm - test$Apps)
+mean(abs_err_gbm)
+median(abs_err_gbm)
+sd(abs_err_gbm)
+IQR(abs_err_gbm)
+range(abs_err_gbm)
+
+#Actual vs. Predicted
+plot(test$Apps, pred_gbm, xlab = "Actual", ylab = "Prediction")
+abline(a = 0, b = 1, col = "red", lwd = 2)
+```
+
+## Model 18: XGBoost Regression
+
+```{r}
+x <- model.matrix(transform_Apps ~ . - Apps, data = train)[, -1] #remove intercept
+y <- train$transform_Apps
+
+set.seed(123)
+xgb_1 <- xgboost(data = x, 
+                 label = y,
+                 eta = 0.1,                       #learning rate
+                 lambda = 0,                      #regularization term
+                 max_depth = 8,                   #tree depth 
+                 nround = 1000,                   #max number of boosting iterations
+                 subsample = 0.65,                #percent of training data to sample for each tree
+                 objective = "reg:squarederror",  #for regression models
+                 verbose = 0                      #silent
+) 
+
+#train RMSE
+xgb_1$evaluation_log
+#plot error vs number trees
+ggplot(xgb_1$evaluation_log) +
+  geom_line(aes(iter, train_rmse), color = "red") 
+
+#Tuning(Train/validation using xgboost)
+#Train and validation sets
+set.seed(1234)
+train_cases <- sample(1:nrow(train), nrow(train) * 0.8)
+#Train data set
+train_xgboost <- train[train_cases,]
+dim(train_xgboost)
+#Model Matrix
+xtrain <- model.matrix(transform_Apps ~ . - Apps, data = train_xgboost)[, -1] #remove intercept
+ytrain <- train_xgboost$transform_Apps
+
+#Validation data set
+validation_xgboost  <- train[- train_cases,]
+dim(validation_xgboost)
+xvalidation <- model.matrix(transform_Apps ~ . - Apps, data = validation_xgboost)[, -1] #remove intercept
+yvalidation <- validation_xgboost$transform_Apps
+
+#Create hyper-parameter grid
+par_grid <- expand.grid(eta = c(0.01, 0.05, 0.1, 0.3),
+                        lambda = c(0, 1, 2, 5),
+                        max_depth = c(1, 3, 5, 7),
+                        subsample = c(0.65, 0.8, 1), 
+                        colsample_bytree = c(0.8, 0.9, 1))
+
+dim(par_grid)
+
+#Grid search 
+for(i in 1:nrow(par_grid )) {
+  set.seed(123)
+  
+  #train model
+  xgb_tune <- xgboost(data =  xtrain,
+                      label = ytrain,
+                      eta = par_grid$eta[i],
+                      max_depth = par_grid$max_depth[i],
+                      subsample = par_grid$subsample[i],
+                      colsample_bytree = par_grid$colsample_bytree[i],
+                      nrounds = 1000,
+                      objective = "reg:squarederror",  #for regression models
+                      verbose = 0,                     #silent,
+                      early_stopping_rounds = 10       #stop if no improvement for 10 consecutive trees
+  )
+  
+  #prediction on validation data set
+  pred_xgb_validation <- predict(xgb_tune, xvalidation)
+  rmse <- sqrt(mean((yvalidation - pred_xgb_validation) ^ 2))
+  
+  #add validation error
+  par_grid$RMSE[i]  <- rmse
+}
+
+knitr::kable(head(par_grid,5))
+
+#Final Model
+set.seed(123)
+xgb_2 <- xgboost(data = x, 
+                 label = y,
+                 eta = 0.05,     #learning rate
+                 max_depth = 3,  #tree depth 
+                 lambda = 0,
+                 nround = 1000,
+                 colsample_bytree = 0.8,
+                 subsample = 0.65,                 #percent of training data to sample for each tree
+                 objective = "reg:squarederror",  #for regression models
+                 verbose = 0                      #silent
+)
+```
+
+**Test the Model XGBoost Regression**
+
+```{r}
+#Model: xgb_2
+x_test <- model.matrix(transform_Apps ~ . - Apps, data = test)[, -1]#remove intercept
+pred_xgb <- predict(xgb_2, x_test)
+head(pred_xgb,5)
+pred_xgb <- ((lambda_1*pred_xgb)+1)^(1/lambda_1)
+head(pred_xgb,5)
+
+#Absolute error mean, median, sd, max, min-------
+
+abs_err_xgb <- abs(pred_xgb - test$Apps)
+mean(abs_err_xgb)
+median(abs_err_xgb)
+sd(abs_err_xgb)
+IQR(abs_err_xgb)
+range(abs_err_xgb)
+```
+
+
+## Assessment:
+
+1. **Model Comparison **
++Comparison of models that reached the test stage.
+```{r}
+df <- data.frame("Model_1" = abs_err_Tlm, 
+                 "Model_2" = abs_err_Tlm_trimmed, 
+                 "Model_3" = abs_err_lm_transform,
+                 "Model_4" = abs_err_bestsub_adj2, 
+                 "Model_5" =abs_err_bestsub_CP, 
+                 "Model_6" =abs_err_bestsub_BIC,
+                 "Model_7" =abs_err_trimmed_bestsub,
+                 "Model_8" =abs_err_ridgereg,
+                 "Model_9" =abs_err_lassoreg,
+                 "Model_10" =abs_err_tree,
+                 "Model_11" =abs_err_bagging,
+                 "Model_11" =abs_err_rf,
+                 "Model_13" =abs_err_trimmedbagging,
+                 "Model_14" =abs_err_gbm,
+                 "Model_15" =abs_err_xgb )
+models_comp <- data.frame("Mean of AbsErrors"   = apply(df, 2, mean),
+                          "Median of AbsErrors" = apply(df, 2, median),
+                          "SD of AbsErrors"  = apply(df, 2, sd),
+                          "IQR of AbsErrors" = apply(df, 2, IQR),
+                          "Min of AbsErrors" = apply(df, 2, min),
+                          "Max of AbsErrors" = apply(df, 2, max))
+        
+
+rownames(models_comp) <- c("Tlm", 
+                           "Tlm_trimmed", 
+                           "lm_transform",
+                           "bestsub_adj2", 
+                           "bestsub_CP", 
+                           "bestsub_BIC",
+                           "trimmed_bestsub",
+                           "ridgereg",
+                           "Lassoreg",
+                           "Tree",
+                           "bagging",
+                           "RandomFarest",
+                          "Trimmedbagging",
+                          "Gbm",
+                          "Xgb ")
+
+
+
+models_comp <- rbind(models_comp, "lm_transform_trimmed_test" = c(mean(abs_err_lm_transform_trimmed_test),
+                                                      median(abs_err_lm_transform_trimmed_test),
+                                                      sd(abs_err_lm_transform_trimmed_test),
+                                                      IQR(abs_err_lm_transform_trimmed_test),
+                                                      range(abs_err_lm_transform_trimmed_test)))
+models_comp<-models_comp[c(1,2,3,16,4,5,6,7,8,9,10,11,12,13,14,15),]
+library(knitr)
+kable(models_comp)
+```
+according to  different index such as: Mean of AbsErrors , Median of AbsErrors, SD of AbsErrors, IQR of AbsErrors best Model is different, for example: the Random Forest model is the best model in terms of Mean.of.Abs.Errors, while the Median.of.Abs.Errors model works better in the bagging method.
+
++ **generally best Model have the least amaunt of those index!**
+
+.
+
+2. **What suggestions do you have for testing the results in a real environment?**
+
++ According to the study, if universities are divided into two or more different categories and predict the number of variable apps in each category separately, we will reach a more accurate understanding.
+
++ As can be seen, there is a high correlation between the variables: Accept, Enroll and F.Undergrad. So we may be better to use the principal component analysis (PCA) method, which is a is a powerful dimension-reduction method, to help model perform better.
+
+  
+  These 2 above approaches can be checked in other study.
+       
+## Establishment:
+
+1. **Examine the challenges of algorithm development?**
+
++ Training to enter and collect information to operators in different training centers.
++ lack of Research budget
+         
+2. **What solutions do you have to solve them?**
++ Holding distance training classes in which all operators participate together.
++ Signing contracts with research centers.
+
+3. **What requirements do you need to provide those solutions?**
++ Existence of infrastructure for holding virtual classes
++ Marketing team to convince research centers to invest on research
+         
+## conclusion:
+
+1. **What did learning this project teach you?**
+
++ All methods of linear regression and Regularization in Regression and Decision Tree in the data were examined.
+
+2. **What challenges did you face? How did you solve them?** 
+
+Almost all linear regression models built on the training data set violated regression assumptions including normality of Residuals. Therefore, we removed one Observation data that was in several other variables is also Outlier, which solved the Leverage problem.  Then we Transform the dependent variable using the Box-Cox method, However, does not solve the problem of violating the Residuals Normality assumption. that makes the predictions in such Models impossible to generalize.
+
+
+For this reason, we went to other methods such as Stepwise Regression, Random Forest, etc., whose purpose is only data-based prediction, and it is not necessary to check the Residuals Normality assumption for that kinds of Models.
+        
+**END of THE CODE.**
